@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра со сбором объектов</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            cursor: none !important;
+        }
+        #score-display {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-family: Arial;
+            text-shadow: 2px 2px 4px black;
+            z-index: 1000;
+        }
+        #timer-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            font-family: Arial;
+            text-shadow: 2px 2px 4px black;
+            z-index: 1000;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-family: Arial;
+            display: none;
+            z-index: 2000;
+            border: 3px solid #4CAF50;
+            min-width: 300px;
+        }
+        #game-over h2 {
+            margin-top: 0;
+            color: #4CAF50;
+            font-size: 28px;
+        }
+        #final-score {
+            font-size: 22px;
+            margin: 20px 0;
+        }
+        #restart-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        #restart-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="score-display">Счет: 0/5</div>
+    <div id="timer-display">Время: 60</div>
+    
+    <div id="game-over">
+        <h2>Игра завершена!</h2>
+        <div id="final-score">Вы собрали: 0/5 объектов</div>
+        <div id="game-result"></div>
+        <button id="restart-button">Начать заново</button>
+    </div>
+
+    <a-scene cursor="rayOrigin: mouse">
+        <a-sky material="src: https://avatars.mds.yandex.net/i?id=b80d2000fd6d7c00244ec5e538a1567114dfad93-16347695-images-thumbs&n=13" radius="100"></a-sky>
+        
+        <a-entity id="ground" geometry="primitive: plane; width: 100; height: 100" 
+                  rotation="-90 0 0" position="0 0 0"
+                  material="src: https://avatars.mds.yandex.net/i?id=649bb452de22df3a1d5aa9b4626fe4493ca3ec2d-5244772-images-thumbs&n=13; repeat: 10 10">
+        </a-entity>  
+
+        <a-entity id="player" position="0 1.6 5">
+            <a-camera id="camera" wasd-controls="enabled: true" 
+                     look-controls="enabled: true" position="0 1.6 0">
+                <a-entity id="player-cursor"
+                         raycaster="objects: .collectible; far: 20"
+                         position="0 0 -1"
+                         geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
+                         material="color: #4CAF50; shader: flat">
+                </a-entity>
+            </a-camera>
+        </a-entity>
+
+        <a-light type="ambient" color="#FFFFFF" intensity="0.7"></a-light>
+        <a-light type="directional" color="#FFFFFF" intensity="0.6" position="-1 2 1"></a-light>
+
+        <a-assets>
+            <a-asset-item id="my-model" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF/Duck.gltf"></a-asset-item>
+        </a-assets>
+
+        <a-entity gltf-model="#my-model"
+                position="0 1 8"
+                scale="2 2 2"
+                rotation="0 -90 0">
+        </a-entity>
+
+        <a-sphere class="collectible" id="collectible-1" radius="1.5" color="#FF5733" position="-5 5 -5"></a-sphere>
+        <a-box class="collectible" id="collectible-2" width="1.8" height="1.8" depth="0.8" color="#33A1FF" position="8 2 0"></a-box>
+        <a-cylinder class="collectible" id="collectible-3" radius="1.4" height="1.8" color="#DAF7A6" position="0 8 8"></a-cylinder>
+        <a-sphere class="collectible" id="collectible-4" radius="1.6" color="#FFC300" position="-7 3 7"></a-sphere>
+        <a-box class="collectible" id="collectible-5" width="1.8" height="1.8" depth="1" color="#C70039" position="5 4 -8"></a-box>
+    </a-scene>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let score = 0;
+            const totalCollectibles = 5;
+            let timeLeft = 20;
+            let gameActive = true;
+            let timerInterval;
+            let collectedObjects = new Set();
+
+            const scoreDisplay = document.getElementById('score-display');
+            const timerDisplay = document.getElementById('timer-display');
+            const gameOverScreen = document.getElementById('game-over');
+            const finalScoreDisplay = document.getElementById('final-score');
+            const gameResultDisplay = document.getElementById('game-result');
+            const restartButton = document.getElementById('restart-button');
+            const collectibles = document.querySelectorAll('.collectible');
+
+            function updateScore() {
+                scoreDisplay.textContent = `Счет: ${score}/${totalCollectibles}`;
+                
+                if (score >= totalCollectibles && gameActive) {
+                    endGame(true);
+                }
+            }
+
+            function updateTimer() {
+                if (!gameActive) return;
+                
+                timeLeft--;
+                timerDisplay.textContent = `Время: ${timeLeft}`;
+                
+                if (timeLeft <= 0) {
+                    endGame(false);
+                }
+            }
+
+            function endGame(isWin) {
+                gameActive = false;
+                clearInterval(timerInterval);
+                
+                const camera = document.getElementById('camera');
+                camera.setAttribute('wasd-controls', 'enabled', false);
+                camera.setAttribute('look-controls', 'enabled', false);
+                
+                finalScoreDisplay.textContent = `Вы собрали: ${score}/${totalCollectibles} объектов`;
+                
+                if (isWin) {
+                    gameResultDisplay.textContent = "Поздравляем! Вы собрали все объекты!";
+                    gameResultDisplay.style.color = "#4CAF50";
+                } else if (timeLeft <= 0) {
+                    gameResultDisplay.textContent = "Время вышло! Попробуйте еще раз.";
+                    gameResultDisplay.style.color = "#FF5733";
+                }
+                
+                gameOverScreen.style.display = "block";
+            }
+
+            function restartGame() {
+                score = 0;
+                timeLeft = 20;
+                gameActive = true;
+                collectedObjects.clear();
+                
+                scoreDisplay.textContent = `Счет: 0/${totalCollectibles}`;
+                timerDisplay.textContent = `Время: ${timeLeft}`;
+                gameOverScreen.style.display = "none";
+                
+                collectibles.forEach(collectible => {
+                    collectible.setAttribute('visible', 'true');
+                    collectible.setAttribute('data-collected', 'false');
+                });
+                
+                const camera = document.getElementById('camera');
+                camera.setAttribute('wasd-controls', 'enabled', true);
+                camera.setAttribute('look-controls', 'enabled', true);
+                
+                const player = document.getElementById('player');
+                player.setAttribute('position', '0 1.6 5');
+                
+                clearInterval(timerInterval);
+                timerInterval = setInterval(updateTimer, 1000);
+            }
+
+            collectibles.forEach(collectible => {
+                collectible.addEventListener('raycaster-intersected', function(event) {
+                    if (!gameActive) return;
+                    
+                    if (event.detail.el.id === 'player-cursor') {
+                        const objectId = this.id;
+                        
+                        if (!collectedObjects.has(objectId) && this.getAttribute('visible') !== 'false') {
+                            collectedObjects.add(objectId);
+                            this.setAttribute('visible', 'false');
+                            this.setAttribute('data-collected', 'true');
+                            score++;
+                            updateScore();
+                        }
+                    }
+                });
+            });
+
+            restartButton.addEventListener('click', restartGame);
+
+            updateScore();
+            timerInterval = setInterval(updateTimer, 1000);
+            
+            document.addEventListener('click', function() {
+                document.querySelector('a-scene').focus();
+            });
+            
+            document.querySelector('a-scene').focus();
+        });
+    </script>
+</body>
+</html>
